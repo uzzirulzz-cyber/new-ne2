@@ -19,6 +19,7 @@ interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   CATALOG_DB: D1Database;
   ADMIN_PASSWORD?: string;
+  PROVIDER_ENCRYPTION_KEY?: string;
   PROVIDER_BASE_URL?: string;
   PROVIDER_USERNAME?: string;
   PROVIDER_PASSWORD?: string;
@@ -133,7 +134,7 @@ const SCHEMA = [
 ];
 
 let schemaReady = false;
-let encryptionKeyPassword: string | null = null;
+let encryptionSecretValue: string | null = null;
 let encryptionKeyPromise: Promise<CryptoKey> | null = null;
 
 const encoder = new TextEncoder();
@@ -156,14 +157,14 @@ async function ensureSchema(db: D1Database): Promise<void> {
 }
 
 async function encryptionKey(env: Env): Promise<CryptoKey> {
-  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 32) {
-    throw new Error('admin_password_not_configured');
+  if (!env.PROVIDER_ENCRYPTION_KEY || env.PROVIDER_ENCRYPTION_KEY.length < 32) {
+    throw new Error('provider_encryption_key_not_configured');
   }
-  if (encryptionKeyPassword !== env.ADMIN_PASSWORD || !encryptionKeyPromise) {
-    encryptionKeyPassword = env.ADMIN_PASSWORD;
+  if (encryptionSecretValue !== env.PROVIDER_ENCRYPTION_KEY || !encryptionKeyPromise) {
+    encryptionSecretValue = env.PROVIDER_ENCRYPTION_KEY;
     const material = await crypto.subtle.importKey(
       'raw',
-      encoder.encode(env.ADMIN_PASSWORD),
+      encoder.encode(env.PROVIDER_ENCRYPTION_KEY),
       'PBKDF2',
       false,
       ['deriveKey'],
@@ -234,7 +235,7 @@ async function saveProviderConfig(env: Env, config: ProviderConfig): Promise<voi
 
 async function authorizedAdmin(request: Request, env: Env): Promise<boolean> {
   const expected = env.ADMIN_PASSWORD;
-  if (!expected || expected.length < 32) return false;
+  if (!expected || expected.length < 32 || !env.PROVIDER_ENCRYPTION_KEY || env.PROVIDER_ENCRYPTION_KEY.length < 32) return false;
   const authorization = request.headers.get('Authorization') || '';
   if (!authorization.startsWith('Bearer ')) return false;
   const supplied = authorization.slice(7);
@@ -732,8 +733,8 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
   if (url.pathname.startsWith('/api/admin/')) {
     if (url.protocol !== 'https:') return json({ error: 'https_required' }, 400);
-    if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 32) {
-      return json({ error: 'admin_password_not_configured' }, 503);
+    if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 32 || !env.PROVIDER_ENCRYPTION_KEY || env.PROVIDER_ENCRYPTION_KEY.length < 32) {
+      return json({ error: 'admin_secrets_not_configured' }, 503);
     }
     if (!await authorizedAdmin(request, env)) return json({ error: 'unauthorized' }, 401);
 
@@ -877,6 +878,7 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     await ensureSchema(env.CATALOG_DB);
+    if (!await readProviderConfig(env)) return;
     try {
       const synced = await syncCatalog(env);
       const checked = await probeChannels(env, synced.generation);

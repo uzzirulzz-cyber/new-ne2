@@ -68,9 +68,22 @@ export function ProviderAdmin() {
     setBusy(true);
     setMessage('');
     try {
+      const baseUrlValue = baseUrl.trim();
+      let providerUrl: URL;
+      try {
+        providerUrl = new URL(baseUrlValue);
+      } catch {
+        throw new Error('Enter a valid provider URL, including http:// or https://.');
+      }
+      if (!['http:', 'https:'].includes(providerUrl.protocol)) {
+        throw new Error('Provider URL must begin with http:// or https://.');
+      }
+      if (providerUrl.protocol === 'http:' && !acceptInsecureHttp) {
+        throw new Error('Acknowledge the HTTP connection warning before saving.');
+      }
       await adminRequest('/api/admin/provider', adminPassword, {
         method: 'POST',
-        body: JSON.stringify({ baseUrl, username, password, acceptInsecureHttp }),
+        body: JSON.stringify({ baseUrl: providerUrl.origin, username, password, acceptInsecureHttp }),
       });
       setConfigured(true);
       setPassword('');
@@ -100,7 +113,7 @@ export function ProviderAdmin() {
         </div>
 
         <p className="mt-5 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
-          First, add a Worker secret named <code>ADMIN_PASSWORD</code> in Cloudflare Settings → Variables and Secrets. Use a unique password with at least 32 characters, then enter that same password below. Provider credentials are encrypted in the catalog database and are never sent back to this page.
+          First, add two Worker secrets in Cloudflare Settings → Variables and Secrets: <code>ADMIN_PASSWORD</code> and <code>PROVIDER_ENCRYPTION_KEY</code>. Use unique values with at least 32 characters. Enter the admin password below. Provider credentials are encrypted in the catalog database and are never sent back to this page. Keep the encryption key safe; changing it later prevents decrypting saved credentials.
         </p>
 
         {configured === null ? (
