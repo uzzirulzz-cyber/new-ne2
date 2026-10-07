@@ -310,7 +310,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
           <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-black p-6">
             <h1 className="text-2xl font-black text-white sm:text-4xl">Your provider catalog</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Live channels, movies, and series supplied by the configured provider. Catalog refresh runs every 15 minutes.
+              Catalog and playback will be enabled when the provider supplies an HTTPS API endpoint.
             </p>
             <div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-300">
               <span>{(stats?.totalChannels ?? 0).toLocaleString()} channels</span>
