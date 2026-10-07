@@ -45,6 +45,7 @@ import { LivePlayerModal } from './components/player/LivePlayerModal';
 
 // Consumer Portal
 import { StreamingPortal } from './components/consumer/StreamingPortal';
+import { ProviderAdmin } from './components/ProviderAdmin';
 import { AuthProvider } from './context/AuthContext';
 
 import { Channel, Category, FilterOptions, ViewMode } from './types/iptv';
@@ -52,6 +53,7 @@ import { ChannelRecord } from './types/database';
 
 function AppContent() {
   const [appMode, setAppMode] = useState<'portal' | 'studio'>('portal');
+  const isProviderAdmin = window.location.pathname === '/admin';
 
   // Active channel playing in player modal
   const [activePlayerChannel, setActivePlayerChannel] = useState<ChannelRecord | null>(null);
@@ -83,6 +85,8 @@ function AppContent() {
     reorderCategories,
     resolveDuplicates,
   } = useIPTV();
+
+  if (isProviderAdmin) return <ProviderAdmin />;
 
   // Studio View state
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -263,14 +267,19 @@ function AppContent() {
           </button>
         </div>
 
-        <a
-          className="text-[11px] font-mono text-slate-400 hover:text-white"
-          href="https://dash.cloudflare.com/1f230ccf421d89de0f68562da95f005d/workers/services/view/new-ne222/production"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Worker & DNS: playbeattv.buzz
-        </a>
+        <div className="flex items-center gap-4">
+          <a href="/admin" className="text-[11px] font-mono text-amber-300 hover:text-amber-200">
+            Provider settings
+          </a>
+          <a
+            className="text-[11px] font-mono text-slate-400 hover:text-white"
+            href="https://dash.cloudflare.com/1f230ccf421d89de0f68562cd4dfc251/workers/services/view/new-ne222/production"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Worker & DNS
+          </a>
+        </div>
       </div>
 
       {/* MODE 1: CUSTOMER STREAMING PORTAL */}

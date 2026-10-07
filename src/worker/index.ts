@@ -18,10 +18,16 @@ interface D1Database {
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   CATALOG_DB: D1Database;
-  STATIC_ONLY?: string;
-  PROVIDER_BASE_URL: string;
-  PROVIDER_USERNAME: string;
-  PROVIDER_PASSWORD: string;
+  ADMIN_PASSWORD?: string;
+  PROVIDER_BASE_URL?: string;
+  PROVIDER_USERNAME?: string;
+  PROVIDER_PASSWORD?: string;
+}
+
+interface ProviderConfig {
+  baseUrl: string;
+  username: string;
+  password: string;
 }
 
 interface ScheduledController {
@@ -127,6 +133,10 @@ const SCHEMA = [
 ];
 
 let schemaReady = false;
+let encryptionKeyPassword: string | null = null;
+let encryptionKeyPromise: Promise<CryptoKey> | null = null;
+
+const encoder = new TextEncoder();
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -145,12 +155,116 @@ async function ensureSchema(db: D1Database): Promise<void> {
   schemaReady = true;
 }
 
-function assertProviderConfigured(env: Env): void {
+async function encryptionKey(env: Env): Promise<CryptoKey> {
+  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 32) {
+    throw new Error('admin_password_not_configured');
+  }
+  if (encryptionKeyPassword !== env.ADMIN_PASSWORD || !encryptionKeyPromise) {
+    encryptionKeyPassword = env.ADMIN_PASSWORD;
+    const material = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(env.ADMIN_PASSWORD),
+      'PBKDF2',
+      false,
+      ['deriveKey'],
+    );
+    encryptionKeyPromise = crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        hash: 'SHA-256',
+        salt: encoder.encode('new-ne222-provider-config-v1'),
+        iterations: 100_000,
+      },
+      material,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt'],
+    );
+  }
+  return encryptionKeyPromise;
+}
+
+async function readProviderConfig(env: Env): Promise<ProviderConfig | null> {
+  const row = await env.CATALOG_DB.prepare(
+    "SELECT value FROM new_ne222_catalog_state WHERE key = 'provider_config'",
+  ).first<{ value: string }>();
+  if (!row) return null;
+
+  const stored = JSON.parse(row.value) as { iv: string; ciphertext: string };
+  const key = await encryptionKey(env);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: Uint8Array.from(atob(stored.iv), (character) => character.charCodeAt(0)) },
+    key,
+    Uint8Array.from(atob(stored.ciphertext), (character) => character.charCodeAt(0)),
+  );
+  const config: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+  if (
+    typeof config !== 'object' || config === null ||
+    !('baseUrl' in config) || typeof config.baseUrl !== 'string' ||
+    !('username' in config) || typeof config.username !== 'string' ||
+    !('password' in config) || typeof config.password !== 'string'
+  ) {
+    throw new Error('provider_config_invalid');
+  }
+  return {
+    baseUrl: config.baseUrl,
+    username: config.username,
+    password: config.password,
+  };
+}
+
+async function saveProviderConfig(env: Env, config: ProviderConfig): Promise<void> {
+  const key = await encryptionKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoder.encode(JSON.stringify(config)),
+  );
+  const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+  const value = JSON.stringify({
+    iv: toBase64(iv),
+    ciphertext: toBase64(new Uint8Array(ciphertext)),
+  });
+  await env.CATALOG_DB.prepare(
+    `INSERT INTO new_ne222_catalog_state (key, value) VALUES ('provider_config', ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+  ).bind(value).run();
+}
+
+async function authorizedAdmin(request: Request, env: Env): Promise<boolean> {
+  const expected = env.ADMIN_PASSWORD;
+  if (!expected || expected.length < 32) return false;
+  const authorization = request.headers.get('Authorization') || '';
+  if (!authorization.startsWith('Bearer ')) return false;
+  const supplied = authorization.slice(7);
+  const [expectedDigest, suppliedDigest] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(expected)),
+    crypto.subtle.digest('SHA-256', encoder.encode(supplied)),
+  ]);
+  const expectedBytes = new Uint8Array(expectedDigest);
+  const suppliedBytes = new Uint8Array(suppliedDigest);
+  return expectedBytes.every((value, index) => value === suppliedBytes[index]);
+}
+
+function withProviderConfig(env: Env, config: ProviderConfig): Env {
+  return {
+    ...env,
+    PROVIDER_BASE_URL: config.baseUrl,
+    PROVIDER_USERNAME: config.username,
+    PROVIDER_PASSWORD: config.password,
+  };
+}
+
+function assertProviderConfigured(
+  env: Env,
+): asserts env is Env & { PROVIDER_BASE_URL: string; PROVIDER_USERNAME: string; PROVIDER_PASSWORD: string } {
   if (!env.PROVIDER_BASE_URL || !env.PROVIDER_USERNAME || !env.PROVIDER_PASSWORD) {
     throw new Error('provider_not_configured');
   }
-  if (new URL(env.PROVIDER_BASE_URL).protocol !== 'https:') {
-    throw new Error('provider_https_required');
+  const url = new URL(env.PROVIDER_BASE_URL);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('provider_url_invalid');
   }
 }
 
@@ -204,6 +318,9 @@ function categoryMap(items: ProviderItem[]): Map<string, string> {
 }
 
 async function syncCatalog(env: Env): Promise<{ generation: string; live: number; movies: number; series: number }> {
+  const config = await readProviderConfig(env);
+  if (!config) throw new Error('provider_not_configured');
+  const providerEnv = withProviderConfig(env, config);
   const [
     live,
     liveCategories,
@@ -212,12 +329,12 @@ async function syncCatalog(env: Env): Promise<{ generation: string; live: number
     series,
     seriesCategories,
   ] = await Promise.all([
-    providerList(env, 'get_live_streams'),
-    providerList(env, 'get_live_categories'),
-    providerList(env, 'get_vod_streams'),
-    providerList(env, 'get_vod_categories'),
-    providerList(env, 'get_series'),
-    providerList(env, 'get_series_categories'),
+    providerList(providerEnv, 'get_live_streams'),
+    providerList(providerEnv, 'get_live_categories'),
+    providerList(providerEnv, 'get_vod_streams'),
+    providerList(providerEnv, 'get_vod_categories'),
+    providerList(providerEnv, 'get_series'),
+    providerList(providerEnv, 'get_series_categories'),
   ]);
 
   const normalizedLive = live.filter((item) =>
@@ -327,6 +444,7 @@ async function syncCatalog(env: Env): Promise<{ generation: string; live: number
 }
 
 function upstreamStreamUrl(env: Env, type: string, id: string, extension: string): URL {
+  assertProviderConfigured(env);
   const root = new URL(env.PROVIDER_BASE_URL);
   const pathType = type === 'live' ? 'live' : type === 'movie' ? 'movie' : 'series';
   const suffix = type === 'live' ? 'ts' : extension.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
@@ -373,6 +491,7 @@ async function proxyStream(request: Request, env: Env, type: string, id: string)
 }
 
 async function proxyImage(urlValue: string | null, env: Env): Promise<Response> {
+  assertProviderConfigured(env);
   if (!urlValue) return json({ error: 'Image URL is required' }, 400);
   let imageUrl: URL;
   try {
@@ -406,7 +525,7 @@ async function readActiveGeneration(db: D1Database): Promise<string | null> {
 }
 
 function publicImageUrl(value: string | null, env: Env): string {
-  if (!value) return '';
+  if (!value || !env.PROVIDER_BASE_URL) return '';
   try {
     const url = new URL(value);
     const providerHost = new URL(env.PROVIDER_BASE_URL).hostname;
@@ -554,6 +673,9 @@ async function listSeries(request: Request, env: Env, generation: string): Promi
 }
 
 async function probeChannels(env: Env, generation: string): Promise<number> {
+  const config = await readProviderConfig(env);
+  if (!config) throw new Error('provider_not_configured');
+  const providerEnv = withProviderConfig(env, config);
   const rows = await env.CATALOG_DB.prepare(
     `SELECT c.stream_id, c.container_extension
      FROM new_ne222_live_catalog c
@@ -571,7 +693,7 @@ async function probeChannels(env: Env, generation: string): Promise<number> {
       let status = 'offline';
       let httpStatus: number | null = null;
       try {
-        const response = await fetch(upstreamStreamUrl(env, 'live', row.stream_id, row.container_extension || ''), {
+        const response = await fetch(upstreamStreamUrl(providerEnv, 'live', row.stream_id, row.container_extension || ''), {
           headers: { Range: 'bytes=0-1' },
           redirect: 'follow',
           signal: AbortSignal.timeout(8000),
@@ -608,8 +730,61 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+  if (url.pathname.startsWith('/api/admin/')) {
+    if (url.protocol !== 'https:') return json({ error: 'https_required' }, 400);
+    if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 32) {
+      return json({ error: 'admin_password_not_configured' }, 503);
+    }
+    if (!await authorizedAdmin(request, env)) return json({ error: 'unauthorized' }, 401);
+
+    if (url.pathname === '/api/admin/provider' && request.method === 'GET') {
+      return json({ configured: Boolean(await readProviderConfig(env)) });
+    }
+    if (url.pathname === '/api/admin/provider' && request.method === 'POST') {
+      if (url.protocol !== 'https:') return json({ error: 'https_required' }, 400);
+      const body: unknown = await request.json();
+      if (typeof body !== 'object' || body === null) return json({ error: 'invalid_request' }, 400);
+      const { baseUrl, username, password, acceptInsecureHttp } = body as Record<string, unknown>;
+      if (
+        typeof baseUrl !== 'string' || typeof username !== 'string' || typeof password !== 'string' ||
+        typeof acceptInsecureHttp !== 'boolean' || !username.trim() || !password
+      ) {
+        return json({ error: 'invalid_request' }, 400);
+      }
+      let providerUrl: URL;
+      try {
+        providerUrl = new URL(baseUrl);
+      } catch {
+        return json({ error: 'invalid_provider_url' }, 400);
+      }
+      if (
+        !['http:', 'https:'].includes(providerUrl.protocol) ||
+        providerUrl.username || providerUrl.password || providerUrl.search || providerUrl.hash
+      ) {
+        return json({ error: 'invalid_provider_url' }, 400);
+      }
+      if (providerUrl.protocol === 'http:' && !acceptInsecureHttp) {
+        return json({ error: 'http_warning_not_acknowledged' }, 400);
+      }
+      await saveProviderConfig(env, {
+        baseUrl: providerUrl.origin,
+        username: username.trim(),
+        password,
+      });
+      return json({ saved: true });
+    }
+    if (url.pathname === '/api/admin/sync' && request.method === 'POST') {
+      if (url.protocol !== 'https:') return json({ error: 'https_required' }, 400);
+      const synced = await syncCatalog(env);
+      const healthChecked = await probeChannels(env, synced.generation);
+      return json({ ...synced, healthChecked });
+    }
+    return json({ error: 'Not found' }, 404);
+  }
+
   if (url.pathname === '/api/health' && request.method === 'GET') {
     const generation = await readActiveGeneration(env.CATALOG_DB);
+    const provider = await readProviderConfig(env);
     const sync = await env.CATALOG_DB.prepare(
       "SELECT value FROM new_ne222_catalog_state WHERE key = 'last_sync'",
     ).first<{ value: string }>();
@@ -618,12 +793,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
        GROUP BY status`,
     ).all<{ status: string; count: number }>();
     return json({
-      configured: Boolean(
-        env.PROVIDER_BASE_URL &&
-        env.PROVIDER_USERNAME &&
-        env.PROVIDER_PASSWORD &&
-        new URL(env.PROVIDER_BASE_URL).protocol === 'https:',
-      ),
+      configured: Boolean(provider),
       generation,
       lastSync: sync?.value ? JSON.parse(sync.value) : null,
       health: Object.fromEntries(health.results.map((row) => [row.status, row.count])),
@@ -631,23 +801,38 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
   }
 
   if (url.pathname === '/api/image' && request.method === 'GET') {
-    return proxyImage(url.searchParams.get('src'), env);
+    const provider = await readProviderConfig(env);
+    if (!provider) return json({ error: 'provider_not_configured' }, 503);
+    return proxyImage(url.searchParams.get('src'), withProviderConfig(env, provider));
   }
 
   const streamMatch = url.pathname.match(/^\/api\/stream\/(live|movie)\/([0-9]+)(?:\.([a-zA-Z0-9]+))?$/);
   if (streamMatch && ['GET', 'HEAD'].includes(request.method)) {
-    return proxyStream(request, env, streamMatch[1], streamMatch[2]);
+    const provider = await readProviderConfig(env);
+    if (!provider) return json({ error: 'provider_not_configured' }, 503);
+    return proxyStream(request, withProviderConfig(env, provider), streamMatch[1], streamMatch[2]);
   }
 
+  const provider = await readProviderConfig(env);
+  if (provider) env = withProviderConfig(env, provider);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
   const generation = await readActiveGeneration(env.CATALOG_DB);
   if (url.pathname === '/api/stats') {
-    if (!generation) return json({ totalChannels: 0, totalMovies: 0, totalSeries: 0, lastSync: null });
+    if (!generation) return json({
+      configured: Boolean(provider),
+      totalChannels: 0,
+      totalMovies: 0,
+      totalSeries: 0,
+      lastSync: null,
+    });
     const sync = await env.CATALOG_DB.prepare(
       "SELECT value FROM new_ne222_catalog_state WHERE key = 'last_sync'",
     ).first<{ value: string }>();
-    return json(sync?.value ? JSON.parse(sync.value) : { totalChannels: 0, totalMovies: 0, totalSeries: 0 });
+    return json({
+      ...(sync?.value ? JSON.parse(sync.value) : { totalChannels: 0, totalMovies: 0, totalSeries: 0 }),
+      configured: Boolean(provider),
+    });
   }
   if (url.pathname === '/api/channels' || url.pathname === '/api/hot-tv') {
     if (!generation) return json({ total: 0, page: 1, pageSize: 0, items: [], channels: [] });
@@ -677,12 +862,6 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) {
-      if (env.STATIC_ONLY === 'true') {
-        return json({
-          error: 'provider_https_required',
-          message: 'Catalog and playback are disabled until the provider supplies an HTTPS API endpoint.',
-        }, 503);
-      }
       try {
         return await handleApi(request, env);
       } catch (error) {
