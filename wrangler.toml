@@ -14,11 +14,6 @@ not_found_handling = "single-page-application"
 [vars]
 STATIC_ONLY = "true"
 
-[[d1_databases]]
-binding = "CATALOG_DB"
-database_name = "playbeat-catalog"
-database_id = "75e2c1c3-a1cc-4b6d-b8f4-4afb403f3e2b"
-
 [[routes]]
 pattern = "playbeattv.buzz"
 custom_domain = true
