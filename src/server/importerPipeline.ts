@@ -9,9 +9,9 @@
  * The importer never publishes invalid/unverified records automatically.
  */
 
-import { ChannelRecord, ImportPipelineResult, RightsStatus, StreamHealthStatus } from '../types/database';
-import { db } from './database';
-import { matchOfficialBroadcaster, getNeutralPlaceholderLogo, normalizeChannelName } from './matchingEngine';
+import { ChannelRecord, ImportPipelineResult, RightsStatus, StreamHealthStatus } from '../types/database.ts';
+import { db } from './database.ts';
+import { matchOfficialBroadcaster, getNeutralPlaceholderLogo, normalizeChannelName } from './matchingEngine.ts';
 
 export interface RawImportEntry {
   name: string;

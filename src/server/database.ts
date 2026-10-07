@@ -16,8 +16,8 @@ import {
   UserAccount, 
   AuditLogRecord,
   ImportPipelineResult
-} from '../types/database';
-import { matchOfficialBroadcaster, getNeutralPlaceholderLogo } from './matchingEngine';
+} from '../types/database.ts';
+import { matchOfficialBroadcaster, getNeutralPlaceholderLogo } from './matchingEngine.ts';
 
 const PLAYBEAT_GATEWAY = 'http://advance.playbeat.live:8880/live/3dc57be7/6ce17be6';
 

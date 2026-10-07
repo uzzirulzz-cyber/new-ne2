@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, Plugin} from 'vite';
-import { handleApiRequest } from './src/server/apiServer';
+import { handleApiRequest } from './src/server/apiServer.ts';
 
 function m3uProxyPlugin(): Plugin {
   const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || '079c27c9f20414f4a992c4ee36eef64d';
@@ -207,7 +207,7 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss(), m3uProxyPlugin()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname ?? '.', '.'),
       },
     },
     server: {

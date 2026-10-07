@@ -3,8 +3,8 @@
  * Handles all customer, public streaming, and Super Admin endpoints.
  */
 
-import { db } from './database';
-import { ImporterPipeline, RawImportEntry } from './importerPipeline';
+import { db } from './database.ts';
+import { ImporterPipeline, RawImportEntry } from './importerPipeline.ts';
 
 export async function handleApiRequest(req: any, res: any): Promise<boolean> {
   const urlObj = new URL(req.url || '', 'http://localhost');
