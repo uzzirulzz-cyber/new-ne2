@@ -8,7 +8,6 @@ import {
   AlertTriangle, 
   Grid, 
   List, 
-  Activity, 
   Sparkles,
   RefreshCw,
   SlidersHorizontal,
@@ -31,7 +30,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  serverHost = 'advance.playbeat.live:8880',
+  serverHost = 'playbeattv.buzz',
   totalChannels,
   duplicateCount,
   viewMode,
@@ -62,19 +61,12 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/20 tracking-wider">
                   M3U8
                 </span>
-                {totalChannels >= 10000 && (
-                  <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-mono font-bold text-orange-400 border border-orange-500/30">
-                    13K+ DB
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
                 <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
                 <span className="font-mono text-[11px] text-slate-300 truncate max-w-[190px] sm:max-w-xs">
                   {serverHost}
                 </span>
-                <span className="hidden sm:inline text-slate-600">•</span>
-                <span className="hidden sm:inline text-[11px] text-emerald-400 font-mono">24ms / 18.4M</span>
               </div>
             </div>
           </div>
@@ -83,14 +75,14 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
           
-          {/* Cloudflare DNS & R2 Manager Button */}
+          {/* Cloudflare Worker Dashboard */}
           <button
             onClick={onOpenCloudflare}
             className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-2.5 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-500/20 hover:border-orange-400/50 transition-all cursor-pointer shadow-sm"
-            title="Cloudflare DNS & R2 Storage Manager"
+            title="Open the Cloudflare Worker dashboard"
           >
             <Cloud className="h-3.5 w-3.5 text-orange-400" />
-            <span className="hidden md:inline">Cloudflare DNS & R2</span>
+            <span className="hidden md:inline">Cloudflare Worker</span>
             <span className="md:hidden">Cloudflare</span>
           </button>
 
@@ -157,4 +149,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-

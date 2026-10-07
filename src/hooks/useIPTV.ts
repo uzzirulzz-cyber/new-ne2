@@ -4,10 +4,9 @@ import { DEFAULT_PLAYLISTS } from '../data/defaultPlaylists';
 import { DEFAULT_PREMIUM_CATEGORIES } from '../data/categories';
 import { parseM3U } from '../utils/m3uParser';
 import { findDuplicates, deduplicateChannels } from '../utils/duplicateDetector';
-import { generate13kChannels } from '../utils/massiveCatalogGenerator';
 
-const STORAGE_KEY = 'iptv_studio_playlists_v1';
-const ACTIVE_ID_KEY = 'iptv_studio_active_id_v1';
+const STORAGE_KEY = 'iptv_studio_playlists_v2';
+const ACTIVE_ID_KEY = 'iptv_studio_active_id_v2';
 
 export function useIPTV() {
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
@@ -396,13 +395,6 @@ export function useIPTV() {
     setActivePlaylistId(DEFAULT_PLAYLISTS[0].id);
   }, []);
 
-  const load13kDatabase = useCallback(() => {
-    const massive = generate13kChannels(13200);
-    setPlaylists((prev) =>
-      prev.map((pl) => (pl.id === activePlaylistId ? { ...pl, channels: massive, lastUpdated: new Date().toISOString() } : pl))
-    );
-  }, [activePlaylistId]);
-
   return {
     playlists,
     activePlaylist,
@@ -429,6 +421,5 @@ export function useIPTV() {
     reorderCategories,
     resolveDuplicates,
     resetToDefaults,
-    load13kDatabase,
   };
 }

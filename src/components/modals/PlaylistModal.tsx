@@ -27,8 +27,8 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
   onCreateEmpty,
 }) => {
   const [tab, setTab] = useState<'url' | 'file' | 'paste' | 'blank'>('url');
-  const [playlistName, setPlaylistName] = useState('Playbeat Live Stream Gateway');
-  const [url, setUrl] = useState('http://advance.playbeat.live:8880/get.php?username=3dc57be7&password=6ce17be6&type=m3u&output=ts');
+  const [playlistName, setPlaylistName] = useState('');
+  const [url, setUrl] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,10 +65,10 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
       onImportContent(playlistName || 'Imported Live Stream', content, url.trim());
       setIsLoading(false);
       onClose();
-    } catch (err: any) {
-      console.warn('URL Fetch warning, will offer fallback demo channels or retry:', err);
-      // If external server is offline / unreachable, inform user cleanly
-      setErrorMsg(`Unable to reach IPTV server directly (${err?.message || 'Gateway Timeout'}). You can also upload a local .m3u file or paste raw M3U text.`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown network error';
+      console.error('Playlist URL import failed:', err);
+      setErrorMsg(`Unable to import this playlist (${message}). You can upload a local .m3u file or paste raw M3U text instead.`);
       setIsLoading(false);
     }
   };
@@ -203,7 +203,7 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
                   required
                   value={playlistName}
                   onChange={(e) => setPlaylistName(e.target.value)}
-                  placeholder="e.g. Playbeat Live 4K Master"
+                  placeholder="e.g. My playlist"
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-3.5 py-2 text-xs text-white focus:border-amber-500/50 focus:outline-none"
                 />
               </div>
@@ -211,20 +211,13 @@ export const PlaylistModal: React.FC<PlaylistModalProps> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-300">M3U / M3U8 Stream URL</label>
-                  <button
-                    type="button"
-                    onClick={() => setUrl('http://advance.playbeat.live:8880/get.php?username=3dc57be7&password=6ce17be6&type=m3u&output=ts')}
-                    className="text-[10px] text-amber-400 hover:underline cursor-pointer"
-                  >
-                    Paste Playbeat URL
-                  </button>
                 </div>
                 <input
                   type="url"
                   required
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="http://..."
+                  placeholder="Enter a playlist URL"
                   className="w-full rounded-xl border border-white/10 bg-slate-900 px-3.5 py-2 text-xs font-mono text-white focus:border-amber-500/50 focus:outline-none"
                 />
               </div>

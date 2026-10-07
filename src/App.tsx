@@ -6,10 +6,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Tv, 
-  Radio, 
   Plus, 
   Upload, 
-  Sparkles, 
   AlertTriangle, 
   Grid, 
   List, 
@@ -24,8 +22,6 @@ import {
   ShieldCheck,
   Film,
   Monitor,
-  Flame,
-  LayoutDashboard
 } from 'lucide-react';
 import { useIPTV } from './hooks/useIPTV';
 import { Header } from './components/Header';
@@ -45,33 +41,21 @@ import { CategoryModal } from './components/modals/CategoryModal';
 import { DuplicateManagerModal } from './components/modals/DuplicateManagerModal';
 import { ExportModal } from './components/modals/ExportModal';
 import { PlaylistEditModal } from './components/modals/PlaylistEditModal';
-import { CloudflareManagerModal } from './components/modals/CloudflareManagerModal';
 import { LivePlayerModal } from './components/player/LivePlayerModal';
 
-// Consumer & Super Admin Views
+// Consumer Portal
 import { StreamingPortal } from './components/consumer/StreamingPortal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 
 import { Channel, Category, FilterOptions, ViewMode } from './types/iptv';
 import { ChannelRecord } from './types/database';
 
 function AppContent() {
-  const { role, switchRole } = useAuth();
-  
-  // Navigation Mode: 'portal' (Streaming Customer View) | 'admin' (22-Module Super Admin NOC) | 'studio' (Playlist & Categories Studio)
-  const [appMode, setAppMode] = useState<'portal' | 'admin' | 'studio'>('portal');
+  const [appMode, setAppMode] = useState<'portal' | 'studio'>('portal');
 
   // Active channel playing in player modal
   const [activePlayerChannel, setActivePlayerChannel] = useState<ChannelRecord | null>(null);
   const [databaseChannels, setDatabaseChannels] = useState<ChannelRecord[]>([]);
-
-  useEffect(() => {
-    fetch('/api/channels?pageSize=100')
-      .then((res) => res.json())
-      .then((data) => setDatabaseChannels(data.items || []))
-      .catch(() => {});
-  }, []);
 
   const {
     playlists,
@@ -98,8 +82,6 @@ function AppContent() {
     deleteCategory,
     reorderCategories,
     resolveDuplicates,
-    resetToDefaults,
-    load13kDatabase,
   } = useIPTV();
 
   // Studio View state
@@ -133,7 +115,6 @@ function AppContent() {
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isPlaylistEditModalOpen, setIsPlaylistEditModalOpen] = useState(false);
-  const [isCloudflareModalOpen, setIsCloudflareModalOpen] = useState(false);
   const [syncNotice, setSyncNotice] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // Sync category filter with sidebar selection
@@ -239,51 +220,16 @@ function AppContent() {
     setTimeout(() => setSyncNotice(null), 5000);
   };
 
-  // Convert studio channel into full channel record for player
   const handlePlayStudioChannel = (ch: Channel) => {
-    const record: ChannelRecord = {
+    setActivePlayerChannel({
       id: ch.id,
       name: ch.name,
       officialName: ch.name,
-      country: ch.country,
-      countryCode: 'GL',
-      region: 'Global',
-      language: ch.language,
       category: ch.category,
-      subcategory: 'Broadcast',
       logo: ch.logo,
-      isLogoVerified: true,
-      description: 'Live broadcast satellite feed.',
       streamUrl: ch.streamUrl,
-      streamProtocol: 'MPEG-TS',
-      resolution: ch.resolution || 'FHD 1080p',
-      bitrate: ch.bitrate || '18.4 Mbps',
-      audioLanguage: 'English',
-      subtitleLanguages: [],
       epgChannelId: ch.epgId,
-      epgSource: 'Playbeat Master',
-      timeZone: 'UTC',
-      hdStatus: 'Full HD',
-      liveStatus: true,
-      isActive: true,
-      geographicAvailability: ['Global'],
-      contentRightsStatus: 'Active',
-      licenseStartDate: new Date().toISOString(),
-      licenseExpirationDate: new Date().toISOString(),
-      providerId: 'prov-playbeat',
-      providerName: 'Playbeat Live Master Gateway',
-      lastVerificationTimestamp: new Date().toISOString(),
-      streamHealth: 'ONLINE',
-      failureCount: 0,
-      responseTimeMs: 24,
-      channelNumber: typeof ch.channelNumber === 'number' ? ch.channelNumber : 101,
-      viewersCount: 24000,
-      playbackStarts: 52000,
-      watchTimeMinutes: 890000,
-      searchFrequency: 18000,
-      favoritesCount: 14000,
-    };
-    setActivePlayerChannel(record);
+    });
   };
 
   return (
@@ -305,21 +251,6 @@ function AppContent() {
           </button>
 
           <button
-            onClick={() => {
-              setAppMode('admin');
-              switchRole('SUPER_ADMIN');
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-bold transition-colors cursor-pointer ${
-              appMode === 'admin'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <LayoutDashboard className="h-3 w-3" />
-            <span>Super Admin NOC (22 Modules)</span>
-          </button>
-
-          <button
             onClick={() => setAppMode('studio')}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-bold transition-colors cursor-pointer ${
               appMode === 'studio'
@@ -332,39 +263,29 @@ function AppContent() {
           </button>
         </div>
 
-        <div className="hidden md:flex items-center gap-2 text-[11px] font-mono text-slate-400">
-          <span className="flex items-center gap-1 text-emerald-400">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            Database: 13,284 Indexed Channels
-          </span>
-          <span>•</span>
-          <span>Cloudflare R2 Synced</span>
-        </div>
+        <a
+          className="text-[11px] font-mono text-slate-400 hover:text-white"
+          href="https://dash.cloudflare.com/1f230ccf421d89de0f68562da95f005d/workers/services/view/new-ne222/production"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Worker & DNS: playbeattv.buzz
+        </a>
       </div>
 
       {/* MODE 1: CUSTOMER STREAMING PORTAL */}
       {appMode === 'portal' && (
         <StreamingPortal
           onWatchChannel={(ch) => setActivePlayerChannel(ch)}
-          onOpenAdmin={() => {
-            setAppMode('admin');
-            switchRole('SUPER_ADMIN');
-          }}
+          onChannelsLoaded={setDatabaseChannels}
         />
       )}
 
-      {/* MODE 2: IPTV SUPER ADMIN NOC */}
-      {appMode === 'admin' && (
-        <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          <AdminDashboard />
-        </div>
-      )}
-
-      {/* MODE 3: PLAYLIST & CATEGORY STUDIO */}
+      {/* MODE 2: PLAYLIST & CATEGORY STUDIO */}
       {appMode === 'studio' && (
         <>
           <Header
-            serverHost={activePlaylist.serverHost || 'advance.playbeat.live:8880'}
+            serverHost={activePlaylist.serverHost || 'playbeattv.buzz'}
             totalChannels={activePlaylist.channels.length}
             duplicateCount={duplicateInfo.totalDuplicates}
             viewMode={viewMode}
@@ -376,7 +297,7 @@ function AppContent() {
               setIsChannelModalOpen(true);
             }}
             onOpenDuplicates={() => setIsDuplicateModalOpen(true)}
-            onOpenCloudflare={() => setIsCloudflareModalOpen(true)}
+            onOpenCloudflare={() => window.open('https://dash.cloudflare.com/1f230ccf421d89de0f68562da95f005d/workers/services/view/new-ne222/production', '_blank', 'noopener,noreferrer')}
             isLoading={isLoading}
           />
 
@@ -447,51 +368,6 @@ function AppContent() {
                   setCurrentPage(1);
                 }}
               />
-
-              {/* High-Capacity 13,000+ Database Strip */}
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-slate-900/60 p-3.5 backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-                    <Radio className="h-4 w-4 animate-pulse" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-white">
-                        {activePlaylist.channels.length >= 10000
-                          ? `Enterprise Catalog: ${activePlaylist.channels.length.toLocaleString()} Channels Indexed`
-                          : 'Database Ready for 13,000+ Live Channels'}
-                      </span>
-                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-mono font-bold text-orange-300">
-                        Cloudflare DNS Proxied
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Account: 079c27c9...4d • R2 Endpoint Active • Virtualized 60 FPS
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {activePlaylist.channels.length < 10000 && (
-                    <button
-                      onClick={() => {
-                        load13kDatabase();
-                        setCurrentPage(1);
-                      }}
-                      className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-3.5 py-1.5 text-xs font-bold text-slate-950 hover:from-orange-400 hover:to-amber-400 shadow-md shadow-orange-500/20 transition-all cursor-pointer"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Load 13,000+ Channels</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setIsCloudflareModalOpen(true)}
-                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition-all cursor-pointer"
-                  >
-                    <span>Manage DNS & R2</span>
-                  </button>
-                </div>
-              </div>
 
               {/* Duplicate Banner Alert */}
               {duplicateInfo.totalDuplicates > 0 && (
@@ -706,12 +582,6 @@ function AppContent() {
         categories={activePlaylist.categories}
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-      />
-
-      <CloudflareManagerModal
-        playlist={activePlaylist}
-        isOpen={isCloudflareModalOpen}
-        onClose={() => setIsCloudflareModalOpen(false)}
       />
 
     </div>
