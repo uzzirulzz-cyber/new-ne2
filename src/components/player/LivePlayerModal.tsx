@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Hls from 'hls.js';
 import { 
   X, 
   Play, 
@@ -42,11 +43,31 @@ export const LivePlayerModal: React.FC<LivePlayerModalProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (channel && isOpen) {
-      setVideoError(false);
-      setIsPlaying(true);
+    if (!channel || !isOpen || !videoRef.current) return;
+    const video = videoRef.current;
+    setVideoError(false);
+    setIsPlaying(false);
+    let hls: Hls | undefined;
+    const isHls = /\.m3u8(?:[?#]|$)/i.test(channel.streamUrl);
+    if (isHls && !video.canPlayType('application/vnd.apple.mpegurl') && Hls.isSupported()) {
+      hls = new Hls();
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) setVideoError(true);
+      });
+      hls.loadSource(channel.streamUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { void video.play().catch(() => setIsPlaying(false)); });
+    } else {
+      video.src = channel.streamUrl;
+      void video.play().catch(() => setIsPlaying(false));
     }
-  }, [channel, isOpen]);
+    return () => {
+      hls?.destroy();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    };
+  }, [channel?.streamUrl, isOpen]);
 
   if (!isOpen || !channel) return null;
 
@@ -66,8 +87,7 @@ export const LivePlayerModal: React.FC<LivePlayerModalProps> = ({
   const togglePlay = () => {
     if (videoRef.current) {
       if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play().catch(() => {});
-      setIsPlaying(!isPlaying);
+      else void videoRef.current.play().catch(() => setIsPlaying(false));
     }
   };
 
@@ -150,17 +170,17 @@ export const LivePlayerModal: React.FC<LivePlayerModalProps> = ({
 
         {/* Video Canvas Area */}
         <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden group">
-          {!videoError ? (
-            <video
+          <video
               ref={videoRef}
-              src={channel.streamUrl}
               autoPlay
               playsInline
               muted={isMuted}
               onError={() => setVideoError(true)}
-              className="h-full w-full object-contain"
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              className={`h-full w-full object-contain ${videoError ? 'hidden' : ''}`}
             />
-          ) : (
+          {videoError && (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-3 animate-pulse">
                 <Tv className="h-8 w-8" />
