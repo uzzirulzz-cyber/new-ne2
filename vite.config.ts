@@ -6,12 +6,4 @@ import {defineConfig} from 'vite';
 export default defineConfig({
   root: import.meta.dirname,
   plugins: [react(), cloudflare(), tailwindcss()],
-  server: {
-    proxy: {
-      '/api': {
-        target: 'https://playbeattv.buzz',
-        changeOrigin: true,
-      },
-    },
-  },
 });

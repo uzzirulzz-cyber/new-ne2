@@ -1,3 +1,5 @@
+import { proxyMedia, readResourceToken } from './hls-proxy';
+
 interface D1Result<T = Record<string, unknown>> {
   results: T[];
   success: boolean;
@@ -319,6 +321,26 @@ function categoryMap(items: ProviderItem[]): Map<string, string> {
 }
 
 async function syncCatalog(env: Env): Promise<{ generation: string; live: number; movies: number; series: number }> {
+  const lease = JSON.stringify({ owner: crypto.randomUUID(), expires: Date.now() + 20 * 60 * 1000 });
+  await env.CATALOG_DB.prepare(
+    `INSERT INTO new_ne222_catalog_state (key, value) VALUES ('sync_lease', ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value
+     WHERE json_extract(new_ne222_catalog_state.value, '$.expires') < ?`,
+  ).bind(lease, Date.now()).run();
+  const acquired = await env.CATALOG_DB.prepare(
+    "SELECT value FROM new_ne222_catalog_state WHERE key = 'sync_lease'",
+  ).first<{ value: string }>();
+  if (acquired?.value !== lease) throw new Error('provider_sync_in_progress');
+  try {
+    return await syncCatalogWithLease(env);
+  } finally {
+    await env.CATALOG_DB.prepare(
+      "DELETE FROM new_ne222_catalog_state WHERE key = 'sync_lease' AND value = ?",
+    ).bind(lease).run();
+  }
+}
+
+async function syncCatalogWithLease(env: Env): Promise<{ generation: string; live: number; movies: number; series: number }> {
   const config = await readProviderConfig(env);
   if (!config) throw new Error('provider_not_configured');
   const providerEnv = withProviderConfig(env, config);
@@ -448,7 +470,7 @@ function upstreamStreamUrl(env: Env, type: string, id: string, extension: string
   assertProviderConfigured(env);
   const root = new URL(env.PROVIDER_BASE_URL);
   const pathType = type === 'live' ? 'live' : type === 'movie' ? 'movie' : 'series';
-  const suffix = type === 'live' ? 'ts' : extension.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
+  const suffix = type === 'live' ? 'm3u8' : extension.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
   return new URL(
     `/${pathType}/${encodeURIComponent(env.PROVIDER_USERNAME)}/${encodeURIComponent(env.PROVIDER_PASSWORD)}/${encodeURIComponent(id)}.${suffix}`,
     root,
@@ -473,22 +495,7 @@ async function proxyStream(request: Request, env: Env, type: string, id: string)
   if (!row) return json({ error: 'Stream not found' }, 404);
 
   const source = upstreamStreamUrl(env, type, id, row.container_extension || '');
-  const headers = new Headers();
-  const range = request.headers.get('Range');
-  if (range) headers.set('Range', range);
-  const upstream = await fetch(source, {
-    method: request.method === 'HEAD' ? 'HEAD' : 'GET',
-    headers,
-    redirect: 'follow',
-    signal: AbortSignal.timeout(30000),
-  });
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.set('Cache-Control', 'no-store');
-  responseHeaders.delete('Set-Cookie');
-  return new Response(request.method === 'HEAD' ? null : upstream.body, {
-    status: upstream.status,
-    headers: responseHeaders,
-  });
+  return proxyMedia(request, source, new URL(env.PROVIDER_BASE_URL).origin, await encryptionKey(env));
 }
 
 async function proxyImage(urlValue: string | null, env: Env): Promise<Response> {
@@ -577,7 +584,7 @@ async function listChannels(url: URL, env: Env, generation: string): Promise<Res
       category: row.category || '',
       logo: publicImageUrl(row.logo_url, env),
       epgChannelId: row.epg_id || '',
-      streamUrl: `/api/stream/live/${encodeURIComponent(row.stream_id)}`,
+      streamUrl: `/api/stream/live/${encodeURIComponent(row.stream_id)}.m3u8`,
       streamHealth: row.status?.toUpperCase() || 'UNVERIFIED',
       liveStatus: row.status === 'online',
       isActive: true,
@@ -683,13 +690,13 @@ async function probeChannels(env: Env, generation: string): Promise<number> {
      LEFT JOIN new_ne222_channel_health h ON h.stream_id = c.stream_id
      WHERE c.generation = ? AND (h.checked_at IS NULL OR h.checked_at < ?)
      ORDER BY h.checked_at IS NOT NULL, h.checked_at
-     LIMIT 500`,
+     LIMIT 20`,
   ).bind(generation, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
     .all<{ stream_id: string; container_extension: string | null }>();
 
   const results: { id: string; status: string; checkedAt: string; httpStatus: number | null }[] = [];
-  for (let offset = 0; offset < rows.results.length; offset += 10) {
-    const batch = rows.results.slice(offset, offset + 10);
+  for (let offset = 0; offset < rows.results.length; offset += 5) {
+    const batch = rows.results.slice(offset, offset + 5);
     const checked = await Promise.all(batch.map(async (row) => {
       let status = 'offline';
       let httpStatus: number | null = null;
@@ -789,6 +796,9 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     const sync = await env.CATALOG_DB.prepare(
       "SELECT value FROM new_ne222_catalog_state WHERE key = 'last_sync'",
     ).first<{ value: string }>();
+    const lastError = await env.CATALOG_DB.prepare(
+      "SELECT value FROM new_ne222_catalog_state WHERE key = 'last_error'",
+    ).first<{ value: string }>();
     const health = await env.CATALOG_DB.prepare(
       `SELECT status, COUNT(*) AS count FROM new_ne222_channel_health
        GROUP BY status`,
@@ -797,6 +807,7 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
       configured: Boolean(provider),
       generation,
       lastSync: sync?.value ? JSON.parse(sync.value) : null,
+      lastError: lastError?.value ? JSON.parse(lastError.value) : null,
       health: Object.fromEntries(health.results.map((row) => [row.status, row.count])),
     });
   }
@@ -805,6 +816,15 @@ async function handleApi(request: Request, env: Env): Promise<Response> {
     const provider = await readProviderConfig(env);
     if (!provider) return json({ error: 'provider_not_configured' }, 503);
     return proxyImage(url.searchParams.get('src'), withProviderConfig(env, provider));
+  }
+
+  if (url.pathname === '/api/stream/resource' && ['GET', 'HEAD'].includes(request.method)) {
+    const provider = await readProviderConfig(env);
+    if (!provider) return json({ error: 'provider_not_configured' }, 503);
+    const key = await encryptionKey(env);
+    const target = await readResourceToken(url.searchParams.get('token') || '', key);
+    if (!target) return json({ error: 'invalid_resource_token' }, 400);
+    return proxyMedia(request, new URL(target), new URL(provider.baseUrl).origin, key);
   }
 
   const streamMatch = url.pathname.match(/^\/api\/stream\/(live|movie)\/([0-9]+)(?:\.([a-zA-Z0-9]+))?$/);
