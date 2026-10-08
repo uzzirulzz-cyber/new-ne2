@@ -1,4 +1,4 @@
-name = "new-ne222-playbeat-live"
+name = "new-ne222"
 main = "src/worker/index.ts"
 compatibility_date = "2026-10-07"
 workers_dev = true
@@ -17,12 +17,9 @@ database_name = "new-ne222-provider"
 database_id = "c70f6682-200f-4bfc-837f-8caff766325e"
 
 [[routes]]
-pattern = "playbeat.live"
-custom_domain = true
+pattern = "playbeat.live/*"
+zone_id = "d12bf3574194021c157f34adb6011c7c"
 
 [[routes]]
-pattern = "www.playbeat.live"
-custom_domain = true
-
-[triggers]
-crons = ["*/15 * * * *"]
+pattern = "www.playbeat.live/*"
+zone_id = "d12bf3574194021c157f34adb6011c7c"
