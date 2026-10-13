@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Film, Heart, Monitor, Play, Search, Tv } from 'lucide-react';
+import { Film, Heart, Monitor, Play, Search, Tv, Radio, Sparkles, ArrowRight, Music2, Clapperboard } from 'lucide-react';
 import { ChannelRecord, MovieRecord, WebSeriesRecord } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
 
@@ -177,7 +177,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
       {channels.map((channel) => {
         const online = channel.streamHealth === 'ONLINE';
         return (
-          <article key={channel.id} className="group overflow-hidden rounded-xl border border-white/10 bg-slate-900/70">
+          <article key={channel.id} className="group overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 transition-all duration-300 hover:-translate-y-1 hover:border-amber-400/30 hover:shadow-[0_18px_44px_rgba(0,0,0,0.45)]">
             <button
               type="button"
               onClick={() => onWatchChannel(channel)}
@@ -214,7 +214,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
   const movieCards = (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
       {movies.map((movie) => (
-        <article key={movie.id} className="overflow-hidden rounded-xl border border-white/10 bg-slate-900/70">
+        <article key={movie.id} className="group overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 transition-all duration-300 hover:-translate-y-1 hover:border-amber-400/30 hover:shadow-[0_18px_44px_rgba(0,0,0,0.45)]">
           <button type="button" onClick={() => playMovie(movie)} className="group relative aspect-[2/3] w-full bg-black/40">
             {movie.poster
               ? <img src={movie.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -236,7 +236,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
   const seriesCards = (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
       {series.map((show) => (
-        <article key={show.id} className="overflow-hidden rounded-xl border border-white/10 bg-slate-900/70">
+        <article key={show.id} className="group overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 transition-all duration-300 hover:-translate-y-1 hover:border-amber-400/30 hover:shadow-[0_18px_44px_rgba(0,0,0,0.45)]">
           <div className="aspect-[2/3] bg-black/40">
             {show.poster
               ? <img src={show.poster} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -258,7 +258,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
         <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2 text-sm font-black text-white">
             <Tv className="h-5 w-5 text-amber-400" />
-            PLAYBEAT IPTV
+            PLAYBEAT <span className="text-amber-400">TV</span>
           </div>
           <nav className="flex items-center gap-1" aria-label="Catalog">
             {tabs.map((item) => (
@@ -300,7 +300,7 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6">
         {error && (
           <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
             {error}
@@ -308,25 +308,57 @@ export const StreamingPortal: React.FC<StreamingPortalProps> = ({ onWatchChannel
         )}
 
         {tab === 'home' && (
-          <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-black p-6">
-            <h1 className="text-2xl font-black text-white sm:text-4xl">Your provider catalog</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              <>Browse your provider's live channels, movies, and series. <a className="text-amber-300 underline" href="/admin">Manage provider settings</a>.</>
-            </p>
-            <div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-300">
-              <span>{(stats?.totalChannels ?? 0).toLocaleString()} channels</span>
-              <span>{(stats?.totalMovies ?? 0).toLocaleString()} movies</span>
-              <span>{(stats?.totalSeries ?? 0).toLocaleString()} series</span>
-              {stats?.syncedAt
-                ? <span>Last sync: {new Date(stats.syncedAt).toLocaleString()}</span>
-                : stats && <span>Catalog has not synchronized yet.</span>}
+          <section className="relative isolate overflow-hidden rounded-[2rem] border border-white/10 bg-[#0c101c] shadow-2xl">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_78%_24%,rgba(245,158,11,0.25),transparent_36%),radial-gradient(ellipse_at_15%_85%,rgba(38,60,104,0.55),transparent_55%)]" />
+            <div className="pointer-events-none absolute right-[-9%] top-[-28%] h-96 w-96 rounded-full border border-amber-400/15" />
+            <div className="relative flex min-h-[340px] flex-col justify-center gap-6 px-6 py-10 sm:min-h-[410px] sm:px-12">
+              <div className="flex w-fit items-center gap-2 rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+                <Sparkles className="h-3.5 w-3.5" /> PlayBeat Entertainment
+              </div>
+              <div className="max-w-2xl">
+                <h1 className="text-4xl font-black leading-[1.08] tracking-tight text-white sm:text-6xl">
+                  Entertainment <span className="bg-gradient-to-r from-amber-300 to-orange-500 bg-clip-text text-transparent">without limits.</span>
+                </h1>
+                <p className="mt-5 max-w-xl text-sm leading-relaxed text-slate-300 sm:text-base">
+                  Discover your available live channels, movies and web series in one premium viewing experience. Choose a title and start watching.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={() => setTab('live')} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300">
+                  <Radio className="h-4 w-4" /> Explore live TV <ArrowRight className="h-4 w-4" />
+                </button>
+                <button type="button" onClick={() => setTab('movies')} className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20">
+                  <Clapperboard className="h-4 w-4" /> Browse movies
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-x-7 gap-y-2 border-t border-white/10 pt-5 text-xs text-slate-300">
+                <span><strong className="text-white">{(stats?.totalChannels ?? 0).toLocaleString()}</strong> channels</span>
+                <span><strong className="text-white">{(stats?.totalMovies ?? 0).toLocaleString()}</strong> movies</span>
+                <span><strong className="text-white">{(stats?.totalSeries ?? 0).toLocaleString()}</strong> series</span>
+                <span className="text-slate-500">{stats?.syncedAt ? 'Catalog updated ' + new Date(stats.syncedAt).toLocaleDateString() : 'Catalog sync pending'}</span>
+              </div>
             </div>
           </section>
+        )}
+        {tab === 'home' && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Live Channels', icon: Tv, target: 'live' as Tab, description: 'Watch live' },
+              { label: 'Movies', icon: Film, target: 'movies' as Tab, description: 'Explore films' },
+              { label: 'Web Series', icon: Clapperboard, target: 'series' as Tab, description: 'Discover series' },
+              { label: 'Music & More', icon: Music2, target: 'live' as Tab, description: 'Browse available channels' },
+            ].map((item) => (
+              <button key={item.label} type="button" onClick={() => setTab(item.target)} className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-amber-400/35 hover:bg-white/[0.07]">
+                <span className="rounded-xl bg-amber-400/10 p-3 text-amber-300"><item.icon className="h-5 w-5" /></span>
+                <span><strong className="block text-sm text-white">{item.label}</strong><small className="text-slate-400">{item.description}</small></span>
+              </button>
+            ))}
+          </div>
         )}
 
         {(tab === 'home' || tab === 'live') && (
           <section className="space-y-4">
-            <h2 className="text-lg font-bold text-white">Live TV</h2>
+            <h2 className="text-xl font-extrabold tracking-tight text-white">Live TV</h2>
             {channels.length ? channelCards : <p className="text-sm text-slate-400">No live channels are available in the current catalog.</p>}
             <PaginationControls page={channelPage} total={channelTotal} onChange={setChannelPage} />
           </section>
